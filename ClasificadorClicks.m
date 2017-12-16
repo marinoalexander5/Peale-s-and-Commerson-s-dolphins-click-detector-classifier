@@ -80,6 +80,5 @@ if (model.Label(1) == -1)
 end
 accuracy_L
 
-%% Grafico Resultado
 % Alexander Marino 11/2017
 
