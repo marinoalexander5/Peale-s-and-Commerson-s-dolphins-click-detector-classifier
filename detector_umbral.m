@@ -1,10 +1,10 @@
 function [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to)
-ith = find (snr_a > th); 
+ith = find (snr_a > th); % Vector de indices
 jth=ith;
 p = 1; 
 for a = 2:length(ith);
     if tt(jth(a))-tt(jth(p))> dt_max; % a:muestra actual  / p:muestra previa
-    p = a;
+        p = a;
     else
         jth(a)= 0;
     end
