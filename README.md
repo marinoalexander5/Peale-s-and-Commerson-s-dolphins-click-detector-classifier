@@ -25,9 +25,24 @@ Presence of specific species were visually confirmed by a dedicated observer dur
 ## Data processing
 ### Detection
 Long Term Spectral Averages (LTSAs) were visually inspected for a first discrimination of files likely to include NBHF clicks from dolphins. The selected files were looped over and analysed by the main script **DetectorClicks.m** which includes calls to **detector_umbral.m** for click detection witihin each file and **acoustic_params.m** for acoustic signal description of each stored click. The output of the script is a structure with the following format:
+<pre>
 
-- [include strutcture tree]
+├───File (1)
+|  ├─── Det (1)
+|  |     ├─── filename (where the click can be found)
+|  |     ├─── clickn (detection number within file)
+|  |     ├─── itime (initial click time referenced to beginning of file - datestr format)
+|  |     |─── spectrum (magnitude spectrum of the click)
+|  |     ├─── signal (time series amplitud values for the detection window of the click)
+|  |     ├─── acoustic_params (time and spectral domain signal features)
+|  |
+|  ├─── Det (2)
+|  :
+|
+├─── File (2)  
+:
 
+</pre>
 This structure allows to locate and go back to any specific click or click train to view in detail possible causes of outliers, malfunctions in the detection function, or to review in detail its waveform and spectrum. 
 
 ### Classification
