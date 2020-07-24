@@ -1,4 +1,4 @@
-function [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to)
+function [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to, Fs)
 %%%
 %%%   [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to)
 %%%   
@@ -18,6 +18,4 @@ function [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to)
 %%%   i1: vector of detection starting indices
 %%%   i2: vector of detection ending indices
 
-
-
-ith = find (snr_a > th); % Vector de indices
+[pks, locs] = finpeakes(snr_a, Fs, 'MinPeakDistance', dt_max, 'MinPeakHeight', th, 'Threshold', 1);
