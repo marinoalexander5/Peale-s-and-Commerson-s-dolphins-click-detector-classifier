@@ -1,3 +1,5 @@
+![Intro](/Commersons-Peales-hydrophone.jpg)
+
 # Introduction
 This project is part of a sound engineering thesis, treating a specific need brought up by Fundación Cethus (NGO - Argentina).
 
@@ -53,7 +55,7 @@ After the model was built, it was tested using the recordings where both species
 # Results
 For visualization purposes a small portion of one of the files where both species were present was plotted, showing red and blue dots corresponding to times of detected NBHF clicks and each color displaying the output of the classifier for that specific click.
 
-[image of results]
+![Results](/Classifier-output.jpg)
 
 # Publications
 
