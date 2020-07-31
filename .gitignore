@@ -133,3 +133,6 @@ dmypy.json
 
 # temporal matlab files
 *.asv
+
+# file created by script
+*.txt
