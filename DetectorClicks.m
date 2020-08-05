@@ -5,6 +5,11 @@ clear
 clc
 addpath(genpath(pwd))
 files = dir('*.wav');
+%% Crear .csv para exportar data
+det_outfile = fopen('../delfin-austral/detector-output.xls', 'w'); % TODO: agregar al path o al filename nombre de carpeta
+fprintf(det_outfile, '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n', 'filename', 'clickn', 'itime', 'snr', 'pfreq', 'cfreq', 'dur10dB', 'bw3dB', 'bw10dB', 'hydrophone');
+fclose(det_outfile);
+%
 File = struct([]); % Preallocation salida de detector
 ai = audioinfo(files(1).name);
 Fs = ai.SampleRate; % Frecuencia de muestreo
@@ -20,18 +25,26 @@ clip = (2^(nbits))/2-1; % Determinar nivel de saturación
 th = 5;  % Determinar umbral SNR (linear ratio, not dB)
 dt_max = 5/1000; % Ventana de 5 ms entre cada detección
 NFFT = 512; % puntos de FFT
-hann_window = hanning(512);
-tukey_window = tukeywin(512); % ventana tukey fft
+hann_window = hanning(NFFT);
+tukey_window = tukeywin(NFFT); % ventana tukey fft
 SVMmat = zeros(0,6); % SVM matrix input preallocation
 j = 0; % indice de detecciones totales
 %
 % Definir funcion de transferencia
 hydro_list = {'Reson','Antarctic_array'};
 tfnum = input('Select hydrophone used for recordings\n 1 = Reson dip hydrophone            2 = Antarctic Array\nNumber: ');
-while ~any([1, 2] == tfnum);
+while ~any([1, 2] == tfnum) || isempty(tfnum);
    fprintf('Invalid number, try again\n\n') 
    tfnum = input('Select hydrophone used for recordings\n 1 = Reson dip hydrophone            2 = Antarctic Array\nNumber: ');
 end
+% % Calibración función de transferencia
+% if tfnum == 1;
+%     [FT,TXT,RAW]=xlsread('función de transferencia.xls',2); % Hidrófono Cethus
+%     FT = FT(:,6);
+% elseif tfnum == 2;
+%     [FT,TXT,RAW]=xlsread('función de transferencia.xls',4);  % Arreglo hidrófonos SIO Antártida
+%     FT = FT(:,8); FT = FT(1:256);
+% end
 %%
 for index = 1 : length(files);
     fprintf('File %d/%d\n Importando %s\n', index, length(files), files(index).name);
@@ -56,18 +69,19 @@ for index = 1 : length(files);
         % Uncomment función seleccionada (conservando ambas para comparación de desempeño)
 %         [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to); % i1, i2 in samples
         [jth,i1,i2,pks] = detector_umbral_2(yy_a, nn_a, th, dt_max, Fs, tt); % jth, i1, i2 in samples
-%%         % DEBUGGING PLOTS
-        % Whole segment
-        figure (1)
-        plot(tt, yy_a, [tt(1) tt(end)], [th*nn_a th*nn_a], '--r')
-        if any(jth);
-            hold on
-            plot(to/Fs+jth/Fs , pks, 'Or');
-        end
-        for i = (1:length(jth));
-            plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
-            hold on
-        end
+        
+        %%         % DEBUGGING PLOTS
+%         % Whole segment
+%         figure (1)
+%         plot(tt, yy_a, [tt(1) tt(end)], [th*nn_a th*nn_a], '--r')
+%         if any(jth);
+%             hold on
+%             plot(to/Fs+jth/Fs , pks, 'Or');
+%         end
+%         for i = (1:length(jth));
+%             plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
+%             hold on
+%         end
         %%
         if isempty(jth);
             to = to+Fs;
@@ -83,15 +97,7 @@ for index = 1 : length(files);
 %             end
         end
 %         %%  Almacenamiento de información de cada click
-% %         Calibración función de transferencia
-%         if tfnum == 1;
-%             [FT,TXT,RAW]=xlsread('función de transferencia.xls',2); % Hidrófono Cethus
-%             FT = FT(:,6);
-%         elseif tfnum == 2;
-%             [FT,TXT,RAW]=xlsread('función de transferencia.xls',4);  % Arreglo hidrófonos SIO Antártida
-%             FT = FT(:,8); FT = FT(1:256);
-%         end
-        FT = 0;
+        FT = 0; %%%%%%%%%%%%%% temporal para testeos
         for ii = k : k + length(jth) - 1;
             % Click Señal Temporal 
             click = xx(i1(ii-k+1):i2(ii-k+1)).*tukey_window;
@@ -110,9 +116,9 @@ for index = 1 : length(files);
             % Almacenar índices de número de archivo y número de detección
             indices(j+1,:) = [index ii];
             % Relación Señal a Ruido del click
-            csum = cumsum(signal.^2); % Ventana del 95% de energia
-            [~,rmswin_start] = min(abs(win-0.025*csum(end)));
-            [~,rmswin_end] = min(abs(win-0.975*csum(end)));
+            csum = cumsum(click.^2); % Ventana del 95% de energia
+            [~,rmswin_start] = min(abs(csum-0.025*csum(end)));
+            [~,rmswin_end] = min(abs(csum-0.975*csum(end)));
             clickrms = rms(click(rmswin_start:rmswin_end));
             Det(ii).snr = clickrms/nn_a;
             % Espectro de Click
@@ -135,10 +141,15 @@ for index = 1 : length(files);
         k = k + length(jth);
         to = to+Fs;
     end
-%       SVMmat = vertcat(SVMmat,[[Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]']); % Matriz de datos a clasificar
+    %% Write to csv file
+%     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
+    det_outfile = fopen('../delfin-austral/detector-output.xls', 'a');
+    fprintf(det_outfile, '%s\n', Det.Filename);
+    fclose(det_outfile);
+    %%
     File(index).Det = Det;
     %% Si hay detecciones agregar filename a .txt
-    files_clicks = fopen('files-with-clicks.txt', 'a');
+    files_clicks = fopen('../delfin-austral/files-with-clicks.txt', 'a');
     f_content = fscanf(files_clicks, 's');
     if isempty(strfind(files(index).name, f_content)); % ver si file ya está incluido en la lista
         fprintf(files_clicks, '%s \n', files(index).name);
