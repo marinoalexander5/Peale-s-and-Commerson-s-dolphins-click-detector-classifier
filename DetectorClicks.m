@@ -5,10 +5,6 @@ clear
 clc
 addpath(genpath(pwd))
 files = dir('*.wav');
-%% Crear .csv para exportar data
-det_outfile = fopen('../delfin-austral/detector-output.xls', 'w'); % TODO: agregar al path o al filename nombre de carpeta
-fprintf(det_outfile, '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n', 'filename', 'clickn', 'itime', 'snr', 'pfreq', 'cfreq', 'dur10dB', 'bw3dB', 'bw10dB', 'hydrophone');
-fclose(det_outfile);
 %
 File = struct([]); % Preallocation salida de detector
 ai = audioinfo(files(1).name);
@@ -97,13 +93,23 @@ for index = 1 : length(files);
 %             end
         end
 %         %%  Almacenamiento de información de cada click
-        FT = 0; %%%%%%%%%%%%%% temporal para testeos
+        FT = 0; %%%%%%%%%%%%%% temporal para DEBBUGGING
         for ii = k : k + length(jth) - 1;
             % Click Señal Temporal 
             click = xx(i1(ii-k+1):i2(ii-k+1)).*tukey_window;
-            % Eliminar clicks saturados
-            if isempty(find(click > clip, 1)) == 0;
-                Det(ii).signal = 'clipping';
+            % Eliminar clicks saturados (guardar tiempo para ICI)
+            if any(click > clip);
+%                 Det(ii).signal = 'clipping';
+                Det(ii).filename = files(index).name; 
+                Det(ii).itime = datestr(tt(floor(i1(ii-k+1)))/(24*60*60), 'DD:HH:MM:SS.FFF');
+                Det(ii).hydrophone = hydro_list{tfnum};
+                % replace the rest with Nan
+                fn = fieldnames(Det);
+                for f = 1:numel(fn)
+                    if (isempty(Det(ii).(fn{f})) )
+                        Det(ii).(fn{f}) = nan;
+                    end
+                end
                 continue
             end            
             Det(ii).signal = click;
@@ -128,7 +134,8 @@ for index = 1 : length(files);
             Det(ii).spectrum = magnitudedB;
             % Parámetros Acústicos
             [pfreq, cfreq, dur10dB, bw3dB, bw10dB ] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
-            Det(ii).pfreq = pfreq;
+            % note: smarter to use arrfun to round
+            Det(ii).pfreq = round(pfreq,2);
             Det(ii).cfreq = cfreq;
             Det(ii).dur10dB = dur10dB;
             Det(ii).bw3dB = bw3dB;
@@ -143,9 +150,16 @@ for index = 1 : length(files);
     end
     %% Write to csv file
 %     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
-    det_outfile = fopen('../delfin-austral/detector-output.xls', 'a');
-    fprintf(det_outfile, '%s\n', Det.Filename);
-    fclose(det_outfile);
+    % Separate table for char parameters
+    T1 = cell2table({Det.filename}', 'VariableNames', {'filename'});
+    T2 = cell2table({Det.itime}', 'VariableNames', {'time_in_file'});
+    T3 = cell2table({Det.hydrophone}', 'VariableNames', {'hydrophone'});
+    T4 = table([Det.clickn]', [Det.snr]', [Det.pfreq]', [Det.cfreq]', [Det.dur10dB]', [Det.bw3dB]', [Det.bw10dB]');
+    T4.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db'};
+    T = [T1, T2, T3, T4];
+    %% Crear .xls para exportar data
+    writetable( T, '../delfin-austral/detector-output.xls');
+%     'date' 'time_in_day' ;
     %%
     File(index).Det = Det;
     %% Si hay detecciones agregar filename a .txt
