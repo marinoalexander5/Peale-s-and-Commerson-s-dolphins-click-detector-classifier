@@ -4,6 +4,20 @@ close all
 clear
 clc
 addpath(genpath(pwd))
+warning('off', 'signal:findpeaks:largeMinPeakHeight'); % for findpeaks not detecting and OpenGL plotting
+%% Ask if plots need to be checked for debugging
+answer = input('Check detection plots? [y/n]:  ', 's');
+while ~any(strcmp({'y', 'n'},answer))
+  fprintf('Please answer y or n\n') 
+  answer = input('Check detection plots? [y/n]:  ', 's');
+end
+switch answer
+    case 'y'
+        plot_check = 1;
+    case 'n'
+        plot_check = 0;
+end
+%%
 files = dir('*.wav');
 %
 File = struct([]); % Preallocation salida de detector
@@ -65,20 +79,20 @@ for index = 1 : length(files);
         % Uncomment función seleccionada (conservando ambas para comparación de desempeño)
 %         [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to); % i1, i2 in samples
         [jth,i1,i2,pks] = detector_umbral_2(yy_a, nn_a, th, dt_max, Fs, tt); % jth, i1, i2 in samples
-        
-        %%         % DEBUGGING PLOTS
-%         % Whole segment
-%         figure (1)
-%         plot(tt, yy_a, [tt(1) tt(end)], [th*nn_a th*nn_a], '--r')
-%         if any(jth);
-%             hold on
-%             plot(to/Fs+jth/Fs , pks, 'Or');
-%         end
-%         for i = (1:length(jth));
-%             plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
-%             hold on
-%         end
-        %%
+%       % DEBUGGING PLOTS
+        if plot_check;
+            % Whole segment
+            figure (1)
+            plot(tt, yy_a, [tt(1) tt(end)], [th*nn_a th*nn_a], '--r')
+            if any(jth);
+                hold on
+                plot(to/Fs+jth/Fs , pks, 'Or');
+            end
+            for i = (1:length(jth));
+                plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
+                hold on
+            end
+        end%
         if isempty(jth);
             to = to+Fs;
             continue
@@ -134,13 +148,12 @@ for index = 1 : length(files);
             Det(ii).spectrum = magnitudedB;
             % Parámetros Acústicos
             [pfreq, cfreq, dur10dB, bw3dB, bw10dB ] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
-            % note: smarter to use arrfun to round
-            Det(ii).pfreq = round(pfreq,2);
-            Det(ii).cfreq = cfreq;
-            Det(ii).dur10dB = dur10dB;
-            Det(ii).bw3dB = bw3dB;
-            Det(ii).bw10dB = bw10dB;
-            %
+            % note: probably smarter to use arrfun to round
+            Det(ii).pfreq = round(pfreq, 2);
+            Det(ii).cfreq = round(cfreq, 2);
+            Det(ii).dur10dB = round(dur10dB, 2);
+            Det(ii).bw3dB = round(bw3dB, 2);
+            Det(ii).bw10dB = round(bw10dB, 2);
             % Hidrófono usado
             Det(ii).hydrophone = hydro_list{tfnum};
             j = j+1;
@@ -148,27 +161,33 @@ for index = 1 : length(files);
         k = k + length(jth);
         to = to+Fs;
     end
-    %% Write to csv file
-%     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
+    File(index).Det = Det;
+    %% Write ouput files
+    % Create output folder if not existent
+    if ~isdir('../detector-output/delfin-austral');
+        mkdir('../detector-output/delfin-austral');
+    end
+    % Si hay detecciones agregar filename a .txt
+    files_clicks = fopen('../detector-output/delfin-austral/files-with-clicks.txt', 'a');
+    f_content = fscanf(files_clicks, 's');
+    if isempty(strfind(files(index).name, f_content)); % ver si file ya está incluido en la lista
+        fprintf(files_clicks, '%s \n', files(index).name);
+    end
+    fclose(files_clicks);
+    % Crear .xls para exportar data
     % Separate table for char parameters
     T1 = cell2table({Det.filename}', 'VariableNames', {'filename'});
     T2 = cell2table({Det.itime}', 'VariableNames', {'time_in_file'});
     T3 = cell2table({Det.hydrophone}', 'VariableNames', {'hydrophone'});
     T4 = table([Det.clickn]', [Det.snr]', [Det.pfreq]', [Det.cfreq]', [Det.dur10dB]', [Det.bw3dB]', [Det.bw10dB]');
     T4.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db'};
+    % Concatenate tables and write to file
     T = [T1, T2, T3, T4];
-    %% Crear .xls para exportar data
     writetable( T, '../delfin-austral/detector-output.xls');
 %     'date' 'time_in_day' ;
-    %%
-    File(index).Det = Det;
-    %% Si hay detecciones agregar filename a .txt
-    files_clicks = fopen('../delfin-austral/files-with-clicks.txt', 'a');
-    f_content = fscanf(files_clicks, 's');
-    if isempty(strfind(files(index).name, f_content)); % ver si file ya está incluido en la lista
-        fprintf(files_clicks, '%s \n', files(index).name);
-    end
-    fclose(files_clicks);
+    %
+%     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
+
 end
 % SVMmat( ~any(SVMmat,2), : ) = [];
 % SVMmat_indexada = [indices SVMmat];
