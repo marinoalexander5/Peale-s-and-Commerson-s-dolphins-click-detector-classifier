@@ -5,6 +5,12 @@ clear
 clc
 addpath(genpath(pwd))
 warning('off', 'signal:findpeaks:largeMinPeakHeight'); % for findpeaks not detecting and OpenGL plotting
+warning('off', 'MATLAB:plot:IgnoreImaginaryXYPart');
+
+% Ask for folder containing files
+selpath = uigetdir(pwd,'Select Location of WAV files');
+files = dir(fullfile(selpath,'*.wav'));
+
 %% Ask if plots need to be checked for debugging
 answer = input('Check detection plots? [y/n]:  ', 's');
 while ~any(strcmp({'y', 'n'},answer))
@@ -18,19 +24,17 @@ switch answer
         plot_check = 0;
 end
 %%
-files = dir('*.wav');
-%
 File = struct([]); % Preallocation salida de detector
 ai = audioinfo(files(1).name);
 Fs = ai.SampleRate; % Frecuencia de muestreo
 nbits = ai.BitsPerSample; % Número de bits por muestra
-% 
+
 % Filtro pasa banda
 fc1=100000/(Fs/2); % Frecuencia de corte inferior en Hz
 fc2=160000/(Fs/2); % Frecuencia de corte superior en Hz
 [N,Wn]=buttord(fc1,fc2,0.1,60);
 [b,a]=butter(N,[fc1 fc2]);
-%
+
 clip = (2^(nbits))/2-1; % Determinar nivel de saturación
 th = 5;  % Determinar umbral SNR (linear ratio, not dB)
 dt_max = 5/1000; % Ventana de 5 ms entre cada detección
@@ -39,13 +43,21 @@ hann_window = hanning(NFFT);
 tukey_window = tukeywin(NFFT); % ventana tukey fft
 SVMmat = zeros(0,6); % SVM matrix input preallocation
 j = 0; % indice de detecciones totales
-%
-% Definir funcion de transferencia
-hydro_list = {'Reson','Antarctic_array'};
-tfnum = input('Select hydrophone used for recordings\n 1 = Reson dip hydrophone            2 = Antarctic Array\nNumber: ');
-while ~any([1, 2] == tfnum) || isempty(tfnum);
+
+
+%% Start detection
+%% Definir funcion de transferencia
+hydro_list = {'Reson','Antarctic_array','SoundTrap HF300'};
+tfnum = input('Select hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: '); 
+if isempty(tfnum);
+    tfnum = 0;
+end
+while ~any((1:length(hydro_list)) == tfnum);
    fprintf('Invalid number, try again\n\n') 
-   tfnum = input('Select hydrophone used for recordings\n 1 = Reson dip hydrophone            2 = Antarctic Array\nNumber: ');
+   tfnum = input('Select hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: ');
+   if isempty(tfnum);
+    tfnum = 0;
+   end
 end
 % % Calibración función de transferencia
 % if tfnum == 1;
@@ -54,7 +66,11 @@ end
 % elseif tfnum == 2;
 %     [FT,TXT,RAW]=xlsread('función de transferencia.xls',4);  % Arreglo hidrófonos SIO Antártida
 %     FT = FT(:,8); FT = FT(1:256);
+
+% elseif tnum == 3;
+%     AGREGAR SOUNDTRAP TRANSFER FUNCTION
 % end
+
 %%
 for index = 1 : length(files);
     fprintf('File %d/%d\n Importando %s\n', index, length(files), files(index).name);
@@ -62,12 +78,14 @@ for index = 1 : length(files);
     k = 1; % Indice iteración detecciones
     Det = struct('filename', (char),'clickn', 0,'signal', [],'itime', 0,'spectrum', zeros(256,1),'snr',0,'pfreq',0,'cfreq',0,'dur10dB',0,'bw3dB',0,'bw10dB',0);% Preallocation click data structure
     Ts = audioinfo(files(index).name);
+    
     while to <= Ts.TotalSamples;
         if to <= Ts.TotalSamples-Fs;
             [ff,Fs]= audioread(files(index).name,[to to+Fs-1],'native');  % Fragmento de 1 segundo de archivo WAV
         else
             [ff,Fs]= audioread(files(index).name,[to Ts.TotalSamples],'native');
         end
+        
         ff = ff - mean(ff); % Remover offset DC
         xx = filtfilt(b,a,double(ff));
         tt = (to:to+length(xx)-1)'/Fs; % Vector temporal
@@ -79,7 +97,7 @@ for index = 1 : length(files);
         % Uncomment función seleccionada (conservando ambas para comparación de desempeño)
 %         [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to); % i1, i2 in samples
         [jth,i1,i2,pks] = detector_umbral_2(yy_a, nn_a, th, dt_max, Fs, tt); % jth, i1, i2 in samples
-%       % DEBUGGING PLOTS
+%%      DEBUGGING PLOTS
         if plot_check;
             % Whole segment
             figure (1)
@@ -92,7 +110,8 @@ for index = 1 : length(files);
                 plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
                 hold on
             end
-        end%
+        end
+        
         if isempty(jth);
             to = to+Fs;
             continue
@@ -106,18 +125,39 @@ for index = 1 : length(files);
 %                 to = to-(length(xx)-i1(end));
 %             end
         end
-%         %%  Almacenamiento de información de cada click
+        
+%%      Almacenamiento de información de cada click
         FT = 0; %%%%%%%%%%%%%% temporal para DEBBUGGING
         for ii = k : k + length(jth) - 1;
+            % Hidrófono usado
+            Det(ii).hydrophone = hydro_list{tfnum};
+            
             % Click Señal Temporal 
             click = xx(i1(ii-k+1):i2(ii-k+1)).*tukey_window;
+            Det(ii).signal = click;
+            
+            % Filename
+            Det(ii).filename = files(index).name; 
+            
+            % Detection date and time UTC
+            Det(ii).itime = seconds(tt(i1(ii-k+1)));
+            Det(ii).date_time = wavname2date (Det(ii).filename); % Returns datenum
+            Det(ii).date_time = datetime(Det(ii).date_time, 'ConvertFrom', 'datenum');
+            Det(ii).date_time = Det(ii).date_time + Det(ii).itime; % Apply time position to date ref
+            Det(ii).date_time.Format = 'yyyy-MM-dd HH:mm:ss.SSS';
+            
+            % Tiempo Inicial de Click relative to file
+            Det(ii).itime.Format = 'hh:mm:ss.SSS';
+            
+            % Número de Click
+            Det(ii).clickn = ii;
+%             % Almacenar índices de número de archivo y número de detección
+%             indices(j+1,:) = [index ii];
+            
             % Eliminar clicks saturados (guardar tiempo para ICI)
             if any(click > clip);
 %                 Det(ii).signal = 'clipping';
-                Det(ii).filename = files(index).name; 
-                Det(ii).itime = datestr(tt(floor(i1(ii-k+1)))/(24*60*60), 'DD:HH:MM:SS.FFF');
-                Det(ii).hydrophone = hydro_list{tfnum};
-                % replace the rest with Nan
+                % replace (snr,spectrum,acoustic params) with NaN
                 fn = fieldnames(Det);
                 for f = 1:numel(fn)
                     if (isempty(Det(ii).(fn{f})) )
@@ -125,27 +165,21 @@ for index = 1 : length(files);
                     end
                 end
                 continue
-            end            
-            Det(ii).signal = click;
-            % Filename
-            Det(ii).filename = files(index).name; 
-            % Número de Click
-            Det(ii).clickn = ii;
-            % Tiempo Inicial de Click
-            Det(ii).itime = datestr(tt(floor(i1(ii-k+1)))/(24*60*60), 'DD:HH:MM:SS.FFF');
-            % Almacenar índices de número de archivo y número de detección
-            indices(j+1,:) = [index ii];
+            end
+            
             % Relación Señal a Ruido del click
             csum = cumsum(click.^2); % Ventana del 95% de energia
             [~,rmswin_start] = min(abs(csum-0.025*csum(end)));
             [~,rmswin_end] = min(abs(csum-0.975*csum(end)));
             clickrms = rms(click(rmswin_start:rmswin_end));
-            Det(ii).snr = clickrms/nn_a;
+            Det(ii).snr = round(clickrms/nn_a, 2);
+            
             % Espectro de Click
             magnitude = 2*abs(fft(click,NFFT)./NFFT);
             magnitude = magnitude(1:NFFT/2);
             magnitudedB = (20*log10(magnitude)) + FT;
             Det(ii).spectrum = magnitudedB;
+            
             % Parámetros Acústicos
             [pfreq, cfreq, dur10dB, bw3dB, bw10dB ] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
             % note: probably smarter to use arrfun to round
@@ -154,8 +188,7 @@ for index = 1 : length(files);
             Det(ii).dur10dB = round(dur10dB, 2);
             Det(ii).bw3dB = round(bw3dB, 2);
             Det(ii).bw10dB = round(bw10dB, 2);
-            % Hidrófono usado
-            Det(ii).hydrophone = hydro_list{tfnum};
+            
             j = j+1;
         end
         k = k + length(jth);
@@ -176,14 +209,15 @@ for index = 1 : length(files);
     fclose(files_clicks);
     % Crear .xls para exportar data
     % Separate table for char parameters
+    T0 = cell2table({Det.date_time}', 'VariableNames', {'date_time'});
     T1 = cell2table({Det.filename}', 'VariableNames', {'filename'});
     T2 = cell2table({Det.itime}', 'VariableNames', {'time_in_file'});
     T3 = cell2table({Det.hydrophone}', 'VariableNames', {'hydrophone'});
     T4 = table([Det.clickn]', [Det.snr]', [Det.pfreq]', [Det.cfreq]', [Det.dur10dB]', [Det.bw3dB]', [Det.bw10dB]');
     T4.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db'};
     % Concatenate tables and write to file
-    T = [T1, T2, T3, T4];
-    writetable( T, '../delfin-austral/detector-output.xls');
+    T = [T0, T1, T2, T3, T4];
+    writetable( T, '../detector-output/delfin-austral/clicks-features.xls');
 %     'date' 'time_in_day' ;
     %
 %     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
