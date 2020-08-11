@@ -135,4 +135,4 @@ dmypy.json
 *.asv
 
 # file created by script
-*.txt
+#*.txt

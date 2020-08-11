@@ -1,4 +1,9 @@
-% Antes de correr seleccionar: Umbral(th), Función transferencia según hidrófono 
+% fix plotting
+
+% Antes de correr seleccionar: Umbral(th)
+% Assuming all files in directory have same sample rate for speed, if not
+%   the case it needs to be inscluded in the loop
+% Recheck detection indexin to make script more readable
 clf
 close all
 clear
@@ -6,10 +11,19 @@ clc
 addpath(genpath(pwd))
 warning('off', 'signal:findpeaks:largeMinPeakHeight'); % for findpeaks not detecting and OpenGL plotting
 warning('off', 'MATLAB:plot:IgnoreImaginaryXYPart');
-
+warning('off', 'MATLAB:xlswrite:AddSheet');
 % Ask for folder containing files
-selpath = uigetdir(pwd,'Select Location of WAV files');
-files = dir(fullfile(selpath,'*.wav'));
+inpath = uigetdir(pwd,'Select Location of WAV files');
+addpath(inpath);
+% files = dir(fullfile(inpath,'*.wav'));
+files = getAllFiles (inpath);
+% [pathstr, name, ext] = fileparts(inpath);
+
+% Ask for output folder 
+outpath = uigetdir(pwd,'Select Location of Detector output');
+
+% Ask for dataset identifier
+dataset_name = input('Enter dataset name identifier (for output excel sheet name):  ','s');
 
 %% Ask if plots need to be checked for debugging
 answer = input('Check detection plots? [y/n]:  ', 's');
@@ -25,7 +39,7 @@ switch answer
 end
 %%
 File = struct([]); % Preallocation salida de detector
-ai = audioinfo(files(1).name);
+ai = audioinfo(files{1}); 
 Fs = ai.SampleRate; % Frecuencia de muestreo
 nbits = ai.BitsPerSample; % Número de bits por muestra
 
@@ -36,7 +50,7 @@ fc2=160000/(Fs/2); % Frecuencia de corte superior en Hz
 [b,a]=butter(N,[fc1 fc2]);
 
 clip = (2^(nbits))/2-1; % Determinar nivel de saturación
-th = 5;  % Determinar umbral SNR (linear ratio, not dB)
+th = 16; % 24 dB  % Determinar umbral SNR (linear ratio, not dB)
 dt_max = 5/1000; % Ventana de 5 ms entre cada detección
 NFFT = 512; % puntos de FFT
 hann_window = hanning(NFFT);
@@ -73,17 +87,17 @@ end
 
 %%
 for index = 1 : length(files);
-    fprintf('File %d/%d\n Importando %s\n', index, length(files), files(index).name);
+    fprintf('File %d/%d\n Importando %s\n', index, length(files), files{index});
     to = 1; % Tiempo inicial del segmento a analizar (en muestras)
     k = 1; % Indice iteración detecciones
     Det = struct('filename', (char),'clickn', 0,'signal', [],'itime', 0,'spectrum', zeros(256,1),'snr',0,'pfreq',0,'cfreq',0,'dur10dB',0,'bw3dB',0,'bw10dB',0);% Preallocation click data structure
-    Ts = audioinfo(files(index).name);
+    Ts = audioinfo(files{index});
     
     while to <= Ts.TotalSamples;
         if to <= Ts.TotalSamples-Fs;
-            [ff,Fs]= audioread(files(index).name,[to to+Fs-1],'native');  % Fragmento de 1 segundo de archivo WAV
+            [ff,Fs]= audioread(files{index},[to to+Fs-1],'native');  % Fragmento de 1 segundo de archivo WAV
         else
-            [ff,Fs]= audioread(files(index).name,[to Ts.TotalSamples],'native');
+            [ff,Fs]= audioread(files{index},[to Ts.TotalSamples],'native');
         end
         
         ff = ff - mean(ff); % Remover offset DC
@@ -91,24 +105,33 @@ for index = 1 : length(files);
         tt = (to:to+length(xx)-1)'/Fs; % Vector temporal
         yy_a = hilbert(xx);   % Envolvente de señal filtrada
         nn_a = sqrt(mean(abs(yy_a).^2)); % Estimación de ruido
-%         fprintf('DEBUGG: SNR from singal: %d/ from envelope %d\n', rms(xx), nn_a);
+%         fprintf('DEBUGG: SNR from signal: %d/ from envelope %d\n', rms(xx), nn_a);
         snr_a = abs(yy_a)/nn_a; % Relación señal / ruido
         %
         % Uncomment función seleccionada (conservando ambas para comparación de desempeño)
 %         [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to); % i1, i2 in samples
         [jth,i1,i2,pks] = detector_umbral_2(yy_a, nn_a, th, dt_max, Fs, tt); % jth, i1, i2 in samples
-%%      DEBUGGING PLOTS
+%%      Performance check plots
         if plot_check;
             % Whole segment
-            figure (1)
-            plot(tt, yy_a, [tt(1) tt(end)], [th*nn_a th*nn_a], '--r')
-            if any(jth);
-                hold on
-                plot(to/Fs+jth/Fs , pks, 'Or');
-            end
-            for i = (1:length(jth));
-                plot((to/Fs+(jth(i)-256)/Fs:1/Fs:to/Fs+(jth(i)+255)/Fs),tukey_window*(pks(i)+1), '--k') % Centred 512 samples Tuckey window in click peak 
-                hold on
+            if ~isempty(jth);
+                figpath = strcat(outpath,'\', dataset_name, '\File', ...
+                    num2str(index));
+                % Create output folder if not existent
+                if ~isdir(figpath);
+                    mkdir(figpath);
+                end
+                figure
+                clf
+                hp1 = plot(tt,xx,'b',tt([1 end]),th*nn_a*[1 1],'r--',tt(jth),pks,'Or',tt([1 end]),nn_a*[1 1],'k--');        
+%                 set(hp(2:4),'linewidth',2)
+                set(gca,'fontsize',20)
+                xlabel('Time [s]')
+                ylabel('Amplitude [counts]')
+                ylim([-max(pks)-10 max(pks)+10]) 
+                title(files{index});
+                saveas(gcf, [figpath '-Frame' num2str(j+1) '.jpg']);
+                close(hp1)
             end
         end
         
@@ -137,7 +160,7 @@ for index = 1 : length(files);
             Det(ii).signal = click;
             
             % Filename
-            Det(ii).filename = files(index).name; 
+            Det(ii).filename = files{index}; 
             
             % Detection date and time UTC
             Det(ii).itime = seconds(tt(i1(ii-k+1)));
@@ -167,6 +190,26 @@ for index = 1 : length(files);
                 continue
             end
             
+            % Subplot with all detections in 1s frame 
+            if plot_check;
+                % Create minimum size square matrix to locate subplots
+                subp_shape = NaN(ceil(sqrt(length(jth)))) ;
+                hp2 = figure;
+                subplot(size(subp_shape,1),size(subp_shape,2), ii-k+1)
+                plot(tt(i1(ii-k+1):i2(ii-k+1)),click,'b', ...
+                    tt(i1(ii-k+1):i2(ii-k+1)), tukey_window*(pks(ii-k+1)+1), '--k');        
+%                 set(hp(2:4),'linewidth',2)
+                set(gca,'XTickLabel',{num2str(tt(i1(ii-k+1)),'%.2f'), ...
+                    num2str(tt(jth(ii-k+1))),num2str(tt(i2(ii-k+1)),'%.2f')}, ...
+                    'XTick',[tt(i1(ii-k+1)) tt(jth(ii-k+1)) tt(i2(ii-k+1))])
+                set(gca,'fontsize',12)
+                xlabel('Time [s]')
+                ylabel('Amplitude [counts]')
+                ylim([-max(pks)-10 max(pks)+10]) 
+                title(files{index});
+            end
+
+            
             % Relación Señal a Ruido del click
             csum = cumsum(click.^2); % Ventana del 95% de energia
             [~,rmswin_start] = min(abs(csum-0.025*csum(end)));
@@ -182,7 +225,7 @@ for index = 1 : length(files);
             
             % Parámetros Acústicos
             [pfreq, cfreq, dur10dB, bw3dB, bw10dB ] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
-            % note: probably smarter to use arrfun to round
+            % note: probably smarter way to round multiple fields
             Det(ii).pfreq = round(pfreq, 2);
             Det(ii).cfreq = round(cfreq, 2);
             Det(ii).dur10dB = round(dur10dB, 2);
@@ -191,20 +234,24 @@ for index = 1 : length(files);
             
             j = j+1;
         end
+        saveas(gcf, strcat(outpath,'\', dataset_name, '\File', ...
+            num2str(index),'\Frame', num2str(j+1) ,'-clicks', ...
+            num2str(k), '-', num2str(k+length(jth)),'.jpg'));
+        close(hp2)
         k = k + length(jth);
         to = to+Fs;
     end
     File(index).Det = Det;
     %% Write ouput files
     % Create output folder if not existent
-    if ~isdir('../detector-output/delfin-austral');
-        mkdir('../detector-output/delfin-austral');
-    end
+%     if ~isdir(strcat(outpath,'\', dataset_name));
+%         mkdir(strcat(outpath,'\', dataset_name));
+%     end
     % Si hay detecciones agregar filename a .txt
-    files_clicks = fopen('../detector-output/delfin-austral/files-with-clicks.txt', 'a');
+    files_clicks = fopen(fullfile(strcat(outpath,'\', dataset_name), 'files-with-clicks.txt'), 'a');
     f_content = fscanf(files_clicks, 's');
-    if isempty(strfind(files(index).name, f_content)); % ver si file ya está incluido en la lista
-        fprintf(files_clicks, '%s \n', files(index).name);
+    if isempty(strfind(files{index}, f_content)); % ver si file ya está incluido en la lista
+        fprintf(files_clicks, '%s \n', files{index});
     end
     fclose(files_clicks);
     % Crear .xls para exportar data
@@ -217,8 +264,7 @@ for index = 1 : length(files);
     T4.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db'};
     % Concatenate tables and write to file
     T = [T0, T1, T2, T3, T4];
-    writetable( T, '../detector-output/delfin-austral/clicks-features.xls');
-%     'date' 'time_in_day' ;
+    writetable( T, fullfile(strcat(outpath,'\', dataset_name), 'clicks-features.xls'), 'Sheet', dataset_name);
     %
 %     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
 
