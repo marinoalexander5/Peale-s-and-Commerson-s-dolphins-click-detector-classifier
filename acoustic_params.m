@@ -13,8 +13,8 @@ function [pf, cf , dur10dB, bw3dB, bw10dB] = acoustic_params(click, Fs, NFFT, ma
 %              3dbbw: 3dB bandwidth  
 %              10dbbw: 10dB bandwidth
 
-persistent freq_kHz 
-freq_kHz = Fs/2*linspace(0,1,NFFT/2)*1e-3;
+persistent freq_kHz
+freq_kHz = Fs*(0:NFFT/2)/NFFT*1e-3;
 %
 % Peak Frequency
 [max_f,pos_f] = max(magnitudedB(2:end)); % 2:end para evitar continua
@@ -23,7 +23,7 @@ pf = freq_kHz(pos_f);
 % Centroid Frequency
 cf = sum(magnitude.*freq_kHz')/sum(magnitude);
 % 10dB Duration
-clickenv = abs(hilbert(click));   % Envolvente de señal
+clickenv = abs(hilbert(click));   % Envolvente de seï¿½al
 [max_t,pos_t] = max(clickenv);
 clickenvflip = flipud(clickenv);
 dur10dB_first = pos_t - (find(clickenvflip(end-pos_t+1:end)<=(max_t/(10^(10/20))), 1, 'first')) + 1; % 10^(10/20) = 10dB 'linear'
