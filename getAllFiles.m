@@ -4,7 +4,7 @@ function fileList = getAllFiles(dirName)
 % http://www.codemiles.com/matlab-examples/get-all-files-in-folder-t7354.html
 % for linux turn slash in line 7 !!!
   dirData = dir(dirName);%# Get the data for the current directory
-  dirWav = dir(fullfile(dirName, '/*.WAV'));
+  dirWav = [dir(fullfile(dirName, '*.WAV')); dir(fullfile(dirName, '*.wav')) ];
   dirIndex = [dirData.isdir];  %# Find the index for directories
   fileList = {dirWav.name}';  %'# Get a list of the files
   if ~isempty(fileList)

@@ -29,10 +29,10 @@ switch tfnum
         [A,~] = fscanf(tfid,'%f %f',[2,inf]);
         fclose(tfid);
     case 3
-        FT = 0;
+        hydrophone = hydro_list{tfnum};
+        FT = 0; % zeros(1, NFFT/2+1)
         return
-        % No transfer function for SounTrap, probablemente plano corregido
-        % internamente
+        % No transfer function for SoundTrap, flat over all BW
 end
 freq = A(1,:);
 uppc = A(2,:);    % [dB re uPa(rms)^2/counts^2]

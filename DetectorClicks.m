@@ -45,14 +45,14 @@ Fs = ai.SampleRate; % Frecuencia de muestreo
 nbits = ai.BitsPerSample; % N�mero de bits por muestra
 
 % Filtro pasa banda
-fc1=50000/(Fs/2); % Frecuencia de corte inferior en Hz % 50 k para incluir BBPs
+fc1=90000/(Fs/2); % Frecuencia de corte inferior en Hz % 50 k para incluir BBPs
 fc2=160000/(Fs/2); % Frecuencia de corte superior en Hz
 [N,Wn]=buttord(fc1,fc2,0.1,60);
 [b,a]=butter(N,[fc1 fc2]);
 
 clip = (2^(nbits))/2-1; % Determinar nivel de saturaci�n
-th = 24;  % Determinar umbral SNR (linear ratio, not dB)
-dt_max = 5/1000; % Ventana de 5 ms entre cada detecci�n
+th = 12;  % Determinar umbral SNR (linear ratio, not dB)
+dt_max = 0.5/1000; % Ventana de 5 ms entre cada detecci�n
 NFFT = 512; % puntos de FFT
 hann_window = hanning(NFFT);
 tukey_window = tukeywin(NFFT); % ventana tukey fft
@@ -104,7 +104,12 @@ for index = 1 : length(files)
             Det(ii).hydrophone = hydrophone;
             
             % Click Se�al Temporal 
-            click = xx(i1(ii-k+1):i2(ii-k+1)).*tukey_window;
+            try
+                click = xx(i1(ii-k+1):i2(ii-k+1)).*tukey_window;
+            catch
+                warning('Click cut off by segment. Saving just for ICI.');
+                click = [xx(i1(ii-k+1):i2(ii-k+1)); clip+1];
+            end
             Det(ii).signal = click;
             
             % Filepath
@@ -151,8 +156,15 @@ for index = 1 : length(files)
             csum = cumsum(click.^2); % Ventana del 95% de energia
             [~,rmswin_start] = min(abs(csum-0.025*csum(end)));
             [~,rmswin_end] = min(abs(csum-0.975*csum(end)));
-            clickrms = rms(click(rmswin_start:rmswin_end));
-            Det(ii).snr = round(clickrms/nn_a, 2);
+            click_rms = rms(click(rmswin_start:rmswin_end));
+            try
+                noise_rms = rms(xx(i1(ii-k+1)-500:i1(ii-k+1)));
+            catch
+                warning('Click cut off by segment. Careful with estimated SNR.')
+                noise_rms = rms(xx(1:i1(ii-k+1)));
+            end
+            click_rms = click_rms - noise_rms;
+            Det(ii).snr = round(click_rms/noise_rms, 2);
             
             % Espectro de Click
             P2 = abs(fft(click,NFFT)/NFFT);
