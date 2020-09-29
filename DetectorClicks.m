@@ -1,6 +1,14 @@
-% Check how to apply SoundTraps TF ??
+% TODO:
+    % added corrected cf to acoustic_params and bwrms. Check array
+    % dimensios to confirm and added bwrms when calling from main script.    
+        
+% Commit message:
+%       Fixed excel output to fit in same file - different pages
+%       changed dB to lowercase for easier handling 
+%       prompt for threshold input
+%       Added bwrms, Qrms and Q3db
+%       Changed centroid frequency calculation
 
-% Antes de correr seleccionar: Umbral(th)
 % Assuming all files in directory have same sample rate for speed, if not
 %   the case it needs to be included in the loop
 % Recheck detection indexing to make script more readable
@@ -50,8 +58,14 @@ fc2=160000/(Fs/2); % Frecuencia de corte superior en Hz
 [N,Wn]=buttord(fc1,fc2,0.1,60);
 [b,a]=butter(N,[fc1 fc2]);
 
+
+%% Ask for SNR threshold (linear ratio, not dB) - default 10 
+th = input('Enter linear SNR ratio or press enter for defautl (default=10):  ');
+if isempty(th)
+    th = 10;    
+end
+
 clip = (2^(nbits))/2-1; % Determinar nivel de saturaci�n
-th = 12;  % Determinar umbral SNR (linear ratio, not dB)
 dt_max = 0.5/1000; % Ventana de 5 ms entre cada detecci�n
 NFFT = 512; % puntos de FFT
 hann_window = hanning(NFFT);
@@ -174,13 +188,16 @@ for index = 1 : length(files)
             Det(ii).spectrum = magnitudedB;
             
             % Par�metros Ac�sticos
-            [pfreq, cfreq, dur10dB, bw3dB, bw10dB ] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
+            [pfreq, cfreq , dur10dB, bw3db, bw10db, bwrms, Q3db, Qrms] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
             % note: probably smarter way to round multiple fields
             Det(ii).pfreq = round(pfreq, 2);
             Det(ii).cfreq = round(cfreq, 2);
-            Det(ii).dur10dB = round(dur10dB, 2);
-            Det(ii).bw3dB = round(bw3dB, 2);
-            Det(ii).bw10dB = round(bw10dB, 2);
+            Det(ii).dur10dB = round(dur10db, 2);
+            Det(ii).bw3dB = round(bw3db, 2);
+            Det(ii).bw10dB = round(bw10db, 2);
+            Det(ii).bwrms = round(bwrms, 2);
+            Det(ii).Q3db = round(Q3db, 2);
+            Det(ii).Qrms = round(Qrms, 2);
             
             j = j+1;
         end
@@ -202,16 +219,19 @@ for index = 1 : length(files)
         fclose(files_clicks);
         % Crear .xls para exportar data
         % Separate table for char parameters
+        %%%% smarter to tramsform and filter columns once last file is finished
+            % T = struct2table(struct2array(File))
+            % T = T(:,{'date_time' 'filepath' 'filename' 'itime' 'hydrophone' 'clickn' 'snr' 'pfreq' 'cfreq' 'dur10dB' 'bw3dB' 'bw10dB'})
         T0 = cell2table({Det.date_time}', 'VariableNames', {'date_time'});
         T1 = cell2table({Det.filepath}', 'VariableNames', {'filepath'});
         T2 = cell2table({Det.filename}', 'VariableNames', {'filename'});
         T3 = cell2table({Det.itime}', 'VariableNames', {'time_in_file'});
         T4 = cell2table({Det.hydrophone}', 'VariableNames', {'hydrophone'});
-        T5 = table([Det.clickn]', [Det.snr]', [Det.pfreq]', [Det.cfreq]', [Det.dur10dB]', [Det.bw3dB]', [Det.bw10dB]');
-        T5.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db'};
+        T5 = table([Det.clickn]', [Det.snr]', [Det.pfreq]', [Det.cfreq]', [Det.dur10dB]', [Det.bw3dB]', [Det.bw10dB]', [Det.bwrms]', [Det.Q3db]', [Det.Qrms]');
+        T5.Properties.VariableNames = {'click_num' 'snr' 'pfreq' 'cfreq' 'dur10db' 'bw3db' 'bw10db' 'bwrms' 'Q3db' 'Qrms'};
         % Concatenate tables and write to file
         T = [T0, T1, T2, T3, T4, T5];
-        writetable( T, fullfile(outpath, dataset_name, 'clicks-features.xls'), 'Sheet', dataset_name);
+        writetable( T, fullfile(outpath, 'clicks-features.xls'), 'Sheet', dataset_name);
         % Save output struct to .mat file
         save(fullfile(outpath, dataset_name, 'Detections.mat'),'File')        
     %     SVMmat = vertcat(SVMmat,[[Det.clickn]' [Det.itime]' [Det.snr]' [Det.pfreq]' [Det.cfreq]' [Det.dur10dB]' [Det.bw3dB]' [Det.bw10dB]' ]); % Matriz de datos a clasificar
