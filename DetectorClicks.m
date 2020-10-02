@@ -1,13 +1,11 @@
 % TODO:
-    % added corrected cf to acoustic_params and bwrms. Check array
-    % dimensios to confirm and added bwrms when calling from main script.    
-        
+    % Add prompts in a separate file.
+    
 % Commit message:
-%       Fixed excel output to fit in same file - different pages
-%       changed dB to lowercase for easier handling 
-%       prompt for threshold input
-%       Added bwrms, Qrms and Q3db
-%       Changed centroid frequency calculation
+%       Maximize plots before saving.
+%       Add visual confirmation of threshold level before running detector
+%       (for ICI extraction).
+%       Add graphical modification of detections.
 
 % Assuming all files in directory have same sample rate for speed, if not
 %   the case it needs to be included in the loop
@@ -16,7 +14,7 @@ clf
 close all
 clear
 clc
-addpath(genpath(pwd))
+% addpath(genpath(pwd))
 warning('off', 'signal:findpeaks:largeMinPeakHeight'); % for findpeaks not detecting and OpenGL plotting
 warning('off', 'MATLAB:plot:IgnoreImaginaryXYPart');
 warning('off', 'MATLAB:xlswrite:AddSheet');
@@ -35,7 +33,7 @@ outpath = uigetdir(pwd,'Select Location of Detector output');
 dataset_name = input('Enter dataset name identifier (for output excel sheet name):  ','s');
 
 %% Ask if plots need to be checked for debugging
-answer = input('Check detection plots? [y/n]:  ', 's');
+answer = input('\nCheck detection plots? [y/n]:  ', 's');
 while ~any(strcmp({'y', 'n'},answer))
   fprintf('Please answer y or n\n') 
   answer = input('Check detection plots? [y/n]:  ', 's');
@@ -45,28 +43,59 @@ switch answer
         plot_check = 1;
     case 'n'
         plot_check = 0;
+    otherwise
+        plot_check = 1; % default
+end
+%% Ask for manual click correction from plot
+answer = input('\nRemove detected clicks manually from plot? [y/n]:  ', 's');
+while ~any(strcmp({'y', 'n'},answer))
+  fprintf('Please answer y or n\n') 
+  answer = input('Remove detected clicks manually from plot? [y/n]:  ', 's');
+end
+switch answer
+    case 'y'
+        manual_check = 1;
+    case 'n'
+        manual_check = 0;
+    otherwise
+        manual_check = 1; % default
 end
 %%
 File = struct([]); % Preallocation salida de detector
 ai = audioinfo(files{1}); 
 Fs = ai.SampleRate; % Frecuencia de muestreo
-nbits = ai.BitsPerSample; % N�mero de bits por muestra
+nbits = ai.BitsPerSample; % Numero de bits por muestra
 
 % Filtro pasa banda
-fc1=90000/(Fs/2); % Frecuencia de corte inferior en Hz % 50 k para incluir BBPs
-fc2=160000/(Fs/2); % Frecuencia de corte superior en Hz
-[N,Wn]=buttord(fc1,fc2,0.1,60);
-[b,a]=butter(N,[fc1 fc2]);
+fc1 = 90000/(Fs/2); % Frecuencia de corte inferior en Hz % 50 k para incluir BBPs
+fc2 = 160000/(Fs/2); % Frecuencia de corte superior en Hz
+[N,Wn] = buttord(fc1,fc2,0.1,60);
+[b,a] = butter(N,[fc1 fc2]);
 
-
-%% Ask for SNR threshold (linear ratio, not dB) - default 10 
-th = input('Enter linear SNR ratio or press enter for defautl (default=10):  ');
-if isempty(th)
-    th = 10;    
+%% Ask if threshold need to be checked in each file
+answer = input('\nWould you like to set threshold on each file with plots? (Useful for ICI) [y/n]:  ', 's');
+while ~any(strcmp({'y', 'n'},answer))
+  fprintf('Please answer y or n\n') 
+  answer = input('Set individual thresholds? [y/n]:  ', 's');
 end
-
-clip = (2^(nbits))/2-1; % Determinar nivel de saturaci�n
-dt_max = 0.5/1000; % Ventana de 5 ms entre cada detecci�n
+switch answer
+    case 'y'
+        th_check = 1;
+    case 'n'
+        th_check = 0;
+    otherwise
+        th_check = 1; % default
+end
+%% Ask for SNR threshold (linear ratio, not dB) - default 10 
+if ~th_check
+    th = input('\nEnter linear SNR ratio or press enter for defautl (default=10):  ');
+    if isempty(th)
+        th = 10;    
+    end
+end
+%%
+clip = (2^(nbits))/2-1; % Determinar nivel de saturacion
+dt_max = 0.5/1000; % Ventana de 5 ms entre cada deteccion
 NFFT = 512; % puntos de FFT
 hann_window = hanning(NFFT);
 tukey_window = tukeywin(NFFT); % ventana tukey fft
@@ -79,13 +108,17 @@ j = 0; % indice de detecciones totales
 [tfnum, FT, hydrophone] = load_tf(Fs, NFFT);
 %%
 for index = 1 : length(files)
-    fprintf('File %d/%d\n Importando %s\n', index, length(files), files{index});
+    fprintf('\nFile %d/%d\n Importando %s\n', index, length(files), files{index});
     to = 1; % Tiempo inicial del segmento a analizar (en muestras)
     k = 1; % Indice iteraci�n detecciones
     Det = struct('filepath', (char),'filename', (char),'clickn', 0,'signal', [],'itime', 0,'spectrum', zeros(256,1),'snr',0,'pfreq',0,'cfreq',0,'dur10dB',0,'bw3dB',0,'bw10dB',0);% Preallocation click data structure
     Ts = audioinfo(files{index});
     [fpath,fname,~] = fileparts(files{index});
     figpath = strcat(outpath,filesep, dataset_name, filesep, fname);
+    % Threshold checking
+    if th_check
+        th = input_threshold(files, index);
+    end
     while to <= Ts.TotalSamples
         if to <= Ts.TotalSamples-Fs
             [ff,Fs]= audioread(files{index},[to to+Fs-1],'native');  % Fragmento de 1 segundo de archivo WAV
@@ -100,7 +133,7 @@ for index = 1 : length(files)
         nn_a = sqrt(mean(abs(yy_a).^2)); % Estimaci�n de ruido
         snr_a = abs(yy_a)/nn_a; % Relaci�n se�al / ruido
         %
-        % Uncomment funci�n seleccionada (conservando ambas para comparaci�n de desempe�o)
+        % Uncomment funcion seleccionada (conservando ambas para comparaci�n de desempe�o)
 %         [jth,i1,i2] = detector_umbral(snr_a,tt,th,dt_max,yy_a,nn_a,to); % i1, i2 in samples
         [jth,i1,i2,pks] = detector_umbral_2(yy_a, nn_a, th, dt_max, Fs); % jth, i1, i2 in samples
         if isempty(jth)
@@ -109,8 +142,12 @@ for index = 1 : length(files)
         end
 %%      Performance check plots (probably better way to organize parameters)
         if plot_check
-            plot_frame(jth, pks, figpath, fpath, fname, hann_window, noverlap, NFFT, Fs, k, tt, xx, th, nn_a);
-        end        
+            [jth, pks, i1, i2] = plot_frame(jth, pks, figpath, fpath, fname, hann_window, noverlap, NFFT, Fs, k, tt, xx, th, nn_a, manual_check);
+            if isempty(jth) % Find way to aviod repeating
+                to = to+Fs;
+                continue
+            end
+        end
 %%      Almacenamiento de informaci�n de cada click
         FT = 0; %%%%%%%%%%%%%% temporal para DEBBUGGING
         for ii = k : k + length(jth) - 1
@@ -188,7 +225,7 @@ for index = 1 : length(files)
             Det(ii).spectrum = magnitudedB;
             
             % Par�metros Ac�sticos
-            [pfreq, cfreq , dur10dB, bw3db, bw10db, bwrms, Q3db, Qrms] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
+            [pfreq, cfreq , dur10db, bw3db, bw10db, bwrms, Q3db, Qrms] = acoustic_params(click, Fs, NFFT, magnitude, magnitudedB);
             % note: probably smarter way to round multiple fields
             Det(ii).pfreq = round(pfreq, 2);
             Det(ii).cfreq = round(cfreq, 2);
@@ -201,8 +238,11 @@ for index = 1 : length(files)
             
             j = j+1;
         end
+        set(hp2, 'Position', get(0, 'Screensize'));
         saveas(hp2, [figpath filesep 'Clicks' num2str(k) ...
                        '-' num2str(k+length(jth)-1) '-subplt.jpg']);
+        saveas(hp2, [figpath filesep 'Clicks' num2str(k) ...
+                       '-' num2str(k+length(jth)-1) '-subplt.fig']);
         clf(hp2)
         k = k + length(jth);
         to = to+Fs;

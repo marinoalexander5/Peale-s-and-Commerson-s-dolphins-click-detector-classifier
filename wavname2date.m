@@ -44,11 +44,12 @@ if isempty(date_str) % not a PAMguard file, try avisoft/SoundTrap filename
 end
 
 if isempty(date_str)
-    fprintf('Unknown filename date format.  Please use one of the following:');
-    fprintf('*yymmdd-HHMMSS*.wav\n');
-    fprintf('*yymmdd_HHMMSS*.wav\n');
-    fprintf('*yyyymmdd_HHMMSS*.wav\n');
-    fprintf('*yymmddHHMMSS*.wav\n'); 
+%     fprintf('Unknown filename date format.  Please use one of the following:\n');
+%     fprintf('*yymmdd-HHMMSS*.wav\n');
+%     fprintf('*yymmdd_HHMMSS*.wav\n');
+%     fprintf('*yyyymmdd_HHMMSS*.wav\n');
+%     fprintf('*yymmddHHMMSS*.wav\n'); 
+    date_str = '200830-000000'; %temporary fix
     date_fmt = 'yymmdd-HHMMSS';
 end 
 

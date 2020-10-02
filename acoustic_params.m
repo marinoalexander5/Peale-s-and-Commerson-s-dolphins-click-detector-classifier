@@ -23,8 +23,7 @@ pos_f = pos_f + 1;
 pf = freq_kHz(pos_f);
 
 % Centroid Frequency
-cf = sum(abs(magnitude.^2).*freq_kHz')/sum(abs(magnitude.^2)); % (new) CHECK freq_kHz
-% DIMENIONS TO SEE IF IT NEEDS TO BE TRANSPOSED
+cf = sum(abs(magnitude.^2).*freq_kHz')/sum(abs(magnitude.^2)); % (new)
 % cf = sum(magnitude.*freq_kHz')/sum(magnitude);
 
 % 10db Duration
@@ -53,7 +52,7 @@ bw10db_last = pos_f + (find(magnitudedb(pos_f+1:end)<=(max_f-10), 1, 'first'));
 bw10db = freq_kHz(bw10db_last)-freq_kHz(bw10db_first);
 
 % RMS Bandwidth
-bwrms = sqrt(sum(((freq_kHz-cf).^2).*(abs(magnitude).^2))/sum(abs(magnitude).^2));
+bwrms = sqrt(sum(((freq_kHz'-cf).^2).*(abs(magnitude).^2))/sum(abs(magnitude).^2));
 
 % Q3db
 Q3db = cf/bw3db;

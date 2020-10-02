@@ -11,9 +11,11 @@ function hp2 = plot_clicks(jth, i1, i2, ii, click, k, tt, tukey_window, pks)
 subp_shape = NaN(ceil(sqrt(length(jth)))) ; % ver donde ubicar para evitar repetir en cada loop
 hp2 = figure(2);
 subplot(size(subp_shape,1),size(subp_shape,2), ii-k+1)
-% trying to plot only 256 samples for closer time zoom resolution
-plot(tt(i1(ii-k+1)+128:i2(ii-k+1)-128),click(129:512-128),'b', ...
-    tt(i1(ii-k+1)+128:i2(ii-k+1)-128), tukey_window(129:512-128)*(pks(ii-k+1)+1), '--k');        
+% Plot only 256 samples for closer time zoom resolution
+% plot(tt(i1(ii-k+1)+128:i2(ii-k+1)-128),click(129:512-128),'b', ...
+%     tt(i1(ii-k+1)+128:i2(ii-k+1)-128), tukey_window(129:512-128)*(pks(ii-k+1)+1), '--k');      
+plot(tt(i1(ii-k+1):i2(ii-k+1)),click,'b', ...
+    tt(i1(ii-k+1):i2(ii-k+1)), tukey_window*(pks(ii-k+1)+1), '--k'); 
 axis tight
 xticks = get(gca, 'Xtick');
 xtlabel = cellstr(datestr(seconds(xticks(ceil(length(xticks)/2))), 'MM:SS.FFF'));

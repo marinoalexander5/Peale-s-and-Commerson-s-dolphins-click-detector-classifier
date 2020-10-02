@@ -8,13 +8,13 @@ function [tfnum, FT, hydrophone] = load_tf(Fs, NFFT)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fax = Fs*(0:NFFT/2)/NFFT*1e-3;
 hydro_list = {'Reson','Antarctic_array','SoundTrap HF300'};
-tfnum = input('Select hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: '); 
+tfnum = input('\nSelect hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: '); 
 if isempty(tfnum)
     tfnum = 0;
 end
 while ~any((1:length(hydro_list)) == tfnum)
    fprintf('Invalid number, try again\n\n') 
-   tfnum = input('Select hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: ');
+   tfnum = input('\nSelect hydrophone used for recordings\n1 = Reson dip hydrophone\n2 = Antarctic Array\n3 = SoundTrap ST300\nNumber: ');
    if isempty(tfnum)
     tfnum = 0;
    end
@@ -27,6 +27,7 @@ switch tfnum
     case 2  % Arreglo hidrofonos SIO Antartida (HF629-ch6) %%%% PEDIR A BRUCE LA QUE CORRESPONDE
         tfid = fopen('HF631_140122_sig1_invSensit.tf','r');
         [A,~] = fscanf(tfid,'%f %f',[2,inf]);
+%         FT = 0;
         fclose(tfid);
     case 3
         hydrophone = hydro_list{tfnum};
